@@ -10,28 +10,40 @@ class Field(IntEnum):
 
 
 def main():
-    board_state = np.zeros((3, 3), dtype=int)
+    print(">>> Tic Tac Toe <<<")
+    game_mode = choose_game_mode()
+
+    state = np.zeros((3, 3), dtype=int)
+    draw_state(state)
     is_max_turn = True
 
-    mode = choose_mode()
-    display_board(board_state)
-
-    while not is_winning_state(board_state) and len(possible_moves(board_state)) > 0:
-        if mode == "human_vs_ai" and is_max_turn:
-            move = get_player_move(board_state)
-            board_state[move] = Field.MAX
+    while (not is_winning_state(state)
+           and len(possible_moves(state)) > 0):
+        if game_mode == "human_vs_ai" and is_max_turn:
+            move = get_player_move(state)
+            state[move] = Field.MAX
         else:
-            move = get_best_move(board_state, is_max_turn)
-            board_state[move] = Field.MAX if is_max_turn else Field.MIN
+            move = get_ai_move(state, is_max_turn)
+            state[move] = Field.MAX if is_max_turn else Field.MIN
 
         is_max_turn = not is_max_turn
-        display_board(board_state)
+        draw_state(state)
 
-    display_winner(get_winner(board_state))
+    print("game over - ", end="")
+    winner = get_winner(state)
+    match winner:
+        case Field.MAX:
+            print("X wins")
+        case Field.MIN:
+            print("O wins")
+        case _:
+            print("its a draw")
 
 
-def minimax(state, is_max_turn, depth=5, alpha=-np.inf, beta=np.inf):
-    if is_winning_state(state) or depth == 0:
+def minimax(state, is_max_turn, depth=9, alpha=-np.inf, beta=np.inf):
+    if (is_winning_state(state)
+            or len(possible_moves(state)) == 0
+            or depth == 0):
         return evaluate_state(state)
 
     if is_max_turn:
@@ -66,10 +78,18 @@ def minimax(state, is_max_turn, depth=5, alpha=-np.inf, beta=np.inf):
 
 
 def heuristic(state):
-    max_possible = 0
-    min_possible = 0
-    lines = []
+    score = 0
 
+    position_weights = np.array([
+        [3, 2, 3],
+        [2, 4, 2],
+        [3, 2, 3]
+    ])
+
+    score += np.sum((state == Field.MAX) * position_weights) * 0.1
+    score -= np.sum((state == Field.MIN) * position_weights) * 0.1
+
+    lines = []
     for row in state:
         lines.append(row)
     for col in state.T:
@@ -78,14 +98,22 @@ def heuristic(state):
     lines.append(np.diag(np.fliplr(state)))
 
     for line in lines:
-        has_max = np.any(line == Field.MAX)
-        has_min = np.any(line == Field.MIN)
-        if has_max and not has_min:
-            max_possible += 1
-        if has_min and not has_max:
-            min_possible += 1
+        max_count = np.sum(line == Field.MAX)
+        min_count = np.sum(line == Field.MIN)
 
-    return max_possible - min_possible
+        if max_count > 0 and min_count == 0:
+            if max_count == 2:
+                score += 5
+            elif max_count == 1:
+                score += 1
+
+        elif min_count > 0 and max_count == 0:
+            if min_count == 2:
+                score -= 5
+            elif min_count == 1:
+                score -= 1
+
+    return score
 
 
 def evaluate_state(state):
@@ -99,33 +127,29 @@ def evaluate_state(state):
     return heuristic(state)
 
 
-def get_best_move(state, is_max_turn):
+def get_ai_move(state, is_max_turn):
     best_move = None
     best_value = -np.inf if is_max_turn else np.inf
 
     for move in possible_moves(state):
         new_state = make_move(move, state, is_max_turn)
-        value = minimax(new_state, not is_max_turn)
+        state_value = minimax(new_state, not is_max_turn)
 
         if is_max_turn:
-            if value >= best_value:
-                best_value = value
+            if state_value > best_value:
+                best_value = state_value
                 best_move = move
         else:
-            if value <= best_value:
-                best_value = value
+            if state_value < best_value:
+                best_value = state_value
                 best_move = move
 
     return best_move
 
 
 def possible_moves(state):
-    moves = []
-    for i in range(3):
-        for j in range(3):
-            if state[i, j] == Field.EMPTY:
-                moves.append((i, j))
-    return moves
+    free_fields = np.argwhere(state == Field.EMPTY)
+    return [tuple(p) for p in free_fields]
 
 
 def make_move(move, state, is_max_turn):
@@ -141,7 +165,8 @@ def is_winning_state(state):
     for col in state.T:
         if abs(np.sum(col)) == 3:
             return True
-    if abs(np.trace(state)) == 3 or abs(np.trace(np.fliplr(state))) == 3:
+    if (abs(np.trace(state)) == 3
+            or abs(np.trace(np.fliplr(state))) == 3):
         return True
     return False
 
@@ -169,43 +194,46 @@ def get_winner(state):
 
 def get_player_move(state):
     while True:
-        move_input = input("insert your move [row col]: ")
-        row, col = map(int, move_input.split())
-        if 0 <= row < 3 and 0 <= col < 3:
-            if state[row, col] == Field.EMPTY:
-                return row, col
+        try:
+            move = input("insert your move [row col]: ")
+            row, col = map(int, move.split())
+            if 0 <= row < 3 and 0 <= col < 3:
+                if state[row, col] == Field.EMPTY:
+                    return row, col
+                else:
+                    print("cell is already occupied")
             else:
-                print("cell is already occupied")
-        else:
-            print("move is out of range")
+                print("move is out of range")
+        except ValueError:
+            print("invalid format, use: row col (e.g., 1 2)")
 
 
-def choose_mode():
+def choose_game_mode():
     print("choose game mode:")
     print("1. human vs AI")
     print("2. AI vs AI")
 
     while True:
-        choice = input("enter your choice: ").strip()
-        if choice == "1":
-            return "human_vs_ai"
-        elif choice == "2":
-            return "ai_vs_ai"
-        else:
-            print("invalid input")
+        match input("enter your choice: ").strip():
+            case "1":
+                return "human_vs_ai"
+            case "2":
+                return "ai_vs_ai"
+            case _:
+                print("invalid input")
 
 
-def display_board(state):
+def draw_state(state):
     print("\n  0   1   2")
     for i, row in enumerate(state):
         print(f"{i} ", end="")
         for j, cell in enumerate(row):
-            if cell == Field.EMPTY:
-                symbol = " "
-            elif cell == Field.MAX:
-                symbol = "X"
-            else:
-                symbol = "O"
+            symbol = " "
+            match cell:
+                case Field.MAX:
+                    symbol = "X"
+                case Field.MIN:
+                    symbol = "O"
             print(f"{symbol}", end="")
             if j < 2:
                 print(" | ", end="")
@@ -213,15 +241,6 @@ def display_board(state):
         if i < 2:
             print("  -----------")
     print()
-
-
-def display_winner(winner):
-    if winner == Field.MAX:
-        print("X wins")
-    elif winner == Field.MIN:
-        print("O wins")
-    else:
-        print("its a draw")
 
 
 if __name__ == "__main__":
